@@ -216,18 +216,23 @@ with tabs[0]:
         eq = equity_curve(trades)
         st.plotly_chart(config=charts.PLOT_CONFIG, figure_or_data=charts.equity_fig(eq), use_container_width=True)
         st.plotly_chart(config=charts.PLOT_CONFIG, figure_or_data=charts.drawdown_fig(eq), use_container_width=True)
-        ca, cb = st.columns(2)
-        with ca:
-            st.markdown("**All numbers**")
-            st.dataframe(pd.DataFrame({"value": [str(v) for v in sm.values()]}, index=list(sm.keys())), use_container_width=True)
-        with cb:
-            st.markdown("**In-sample vs out-of-sample**")
-            sp = split_in_out(trades, cutoff)
-            if sp is not None:
-                st.dataframe(sp.astype(str), use_container_width=True)
-            st.caption("Only the out-of-sample column is a fair test, and only if you did not tune settings while looking at it. "
-                       f"Average cost per round trip: ₹{trades.costs.mean():,.0f} "
-                       f"(≈ {trades.costs.mean() / (S.lot_size * S.lots):.1f} points), plus {2 * S.slippage_pts:g} points slippage.")
+        def nice(v):
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                return str(v)
+            return f"{v:,.0f}" if abs(v) >= 100 or v == int(v) else f"{v:,.2f}"
+
+        st.markdown("**In-sample vs out-of-sample**")
+        sp = split_in_out(trades, cutoff)
+        if sp is not None:
+            st.dataframe(sp.map(nice).rename(columns={"In-sample (before)": "Before", "Out-of-sample (after)": "After (fair test)"}),
+                         use_container_width=True)
+        st.caption("Only the 'After' column is a fair test, and only if you did not tune settings while looking at it. "
+                   f"Average cost per round trip: ₹{trades.costs.mean():,.0f} "
+                   f"(≈ {trades.costs.mean() / (S.lot_size * S.lots):.1f} points), plus {2 * S.slippage_pts:g} points slippage.")
+        st.markdown("**All numbers**")
+        st.dataframe(pd.DataFrame({"value": [nice(v) for v in sm.values()]}, index=list(sm.keys())), use_container_width=True)
 
 with tabs[1]:
     if len(trades):
