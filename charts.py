@@ -10,10 +10,14 @@ LAYOUT = dict(margin=dict(l=10, r=10, t=30, b=10), plot_bgcolor="white", hovermo
 
 
 def _base(fig, height=360, title=None):
-    fig.update_layout(height=height, title=title, **LAYOUT)
-    fig.update_xaxes(showgrid=True, gridcolor="#eeeeee")
-    fig.update_yaxes(showgrid=True, gridcolor="#eeeeee")
+    """Same look everywhere. Charts are locked (no drag/zoom) so scrolling on a phone does not move them."""
+    fig.update_layout(height=height, title=title, dragmode=False, **LAYOUT)
+    fig.update_xaxes(showgrid=True, gridcolor="#eeeeee", fixedrange=True)
+    fig.update_yaxes(showgrid=True, gridcolor="#eeeeee", fixedrange=True)
     return fig
+
+
+PLOT_CONFIG = {"displayModeBar": False, "scrollZoom": False, "doubleClick": False}
 
 
 def equity_fig(eq):

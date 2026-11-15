@@ -204,13 +204,14 @@ with tabs[0]:
         st.info("No trades with these settings. Lower the minimum score or turn off strict rules.")
     else:
         k = st.columns(4)
-        k[0].metric("Net profit ₹", f"{sm['Net profit ₹']:,.0f}")
-        k[1].metric("Trades", f"{sm['Total trades']:,}", f"{sm['Win rate %']}% win")
+        lakh = lambda v: f"{v / 1e5:,.2f} L" if abs(v) >= 1e5 else f"{v:,.0f}"
+        k[0].metric("Net profit ₹", lakh(sm['Net profit ₹']))
+        k[1].metric("Trades", f"{sm['Total trades']:,}", f"{sm['Win rate %']}% win", delta_color="off")
         k[2].metric("Profit factor", f"{sm['Profit factor']}")
-        k[3].metric("Max drawdown ₹", f"{sm['Max drawdown ₹']:,.0f}")
+        k[3].metric("Max drawdown ₹", lakh(sm['Max drawdown ₹']))
         eq = equity_curve(trades)
-        st.plotly_chart(charts.equity_fig(eq), use_container_width=True)
-        st.plotly_chart(charts.drawdown_fig(eq), use_container_width=True)
+        st.plotly_chart(config=charts.PLOT_CONFIG, figure_or_data=charts.equity_fig(eq), use_container_width=True)
+        st.plotly_chart(config=charts.PLOT_CONFIG, figure_or_data=charts.drawdown_fig(eq), use_container_width=True)
         ca, cb = st.columns(2)
         with ca:
             st.markdown("**All numbers**")
@@ -227,10 +228,10 @@ with tabs[0]:
 with tabs[1]:
     if len(trades):
         mt = monthly_table(trades)
-        st.plotly_chart(charts.monthly_fig(mt), use_container_width=True)
+        st.plotly_chart(config=charts.PLOT_CONFIG, figure_or_data=charts.monthly_fig(mt), use_container_width=True)
         st.dataframe(mt.style.format("{:,.0f}", na_rep=""), use_container_width=True)
         dw = dow_table(trades)
-        st.plotly_chart(charts.bar_fig(dw, "weekday", "net ₹", "Net ₹ by day of week"), use_container_width=True)
+        st.plotly_chart(config=charts.PLOT_CONFIG, figure_or_data=charts.bar_fig(dw, "weekday", "net ₹", "Net ₹ by day of week"), use_container_width=True)
 
 with tabs[2]:
     if len(trades):
@@ -254,7 +255,7 @@ with tabs[3]:
     pv = piv.copy()
     pv["dt"] = ctx.dt.to_numpy()[pv.i.to_numpy(int)] if len(pv) else []
     pv = pv[pd.to_datetime(pv.dt).dt.date == dsel] if len(pv) else pv
-    st.plotly_chart(charts.day_fig(cd, td, pv), use_container_width=True)
+    st.plotly_chart(config=charts.PLOT_CONFIG, figure_or_data=charts.day_fig(cd, td, pv), use_container_width=True)
     if len(td):
         st.dataframe(td[["strategy", "side", "score", "setup", "entry_time", "entry", "stop", "target", "exit_time", "exit", "reason",
                          "points", "net"]], use_container_width=True, hide_index=True,
@@ -267,7 +268,7 @@ with tabs[4]:
     if len(trades):
         gt = group_table(trades, "strategy")
         gt["strategy"] = gt.strategy.map(lambda k: ALL_STRATEGIES.get(k, k))
-        st.plotly_chart(charts.bar_fig(gt, "strategy", "net ₹", "Net ₹ by strategy"), use_container_width=True)
+        st.plotly_chart(config=charts.PLOT_CONFIG, figure_or_data=charts.bar_fig(gt, "strategy", "net ₹", "Net ₹ by strategy"), use_container_width=True)
         st.dataframe(gt, use_container_width=True, hide_index=True)
         st.markdown("**BUY vs SELL**")
         bs = group_table(trades, "side")
@@ -279,8 +280,8 @@ with tabs[4]:
 
 with tabs[5]:
     if len(trades) and trades.rv.notna().any():
-        st.plotly_chart(charts.vol_fig(trades), use_container_width=True)
-        st.plotly_chart(charts.rv_hist(trades), use_container_width=True)
+        st.plotly_chart(config=charts.PLOT_CONFIG, figure_or_data=charts.vol_fig(trades), use_container_width=True)
+        st.plotly_chart(config=charts.PLOT_CONFIG, figure_or_data=charts.rv_hist(trades), use_container_width=True)
         st.caption(f"Strong = volume ≥ {S.vol_strong}x average, moderate ≥ {S.vol_moderate}x. If volume confirmation works, "
                    "'strong' should earn clearly more than 'weak'.")
     else:
@@ -303,7 +304,7 @@ with tabs[6]:
             st.success(f"Stitched out-of-sample result: {so['Total trades']} trades, net ₹{so['Net profit ₹']:,.0f}, "
                        f"profit factor {so['Profit factor']}, win {so['Win rate %']}%")
         slm = st.radio("Sensitivity map for stop type", ["signal", "swing", "fixed"], horizontal=True)
-        st.plotly_chart(charts.sensitivity_fig(grid, slm), use_container_width=True)
+        st.plotly_chart(config=charts.PLOT_CONFIG, figure_or_data=charts.sensitivity_fig(grid, slm), use_container_width=True)
         st.caption("A good setting sits in a broad green area, not on a lone green square. The map uses the whole period, so it "
                    "is NOT a performance number.")
 
