@@ -1,4 +1,5 @@
 """Performance numbers, equity and drawdown, group tables, out-of-sample split and walk-forward optimisation."""
+import gc
 import itertools
 
 import numpy as np
@@ -114,7 +115,10 @@ def walk_forward(run, base, grid=GRID, min_trades=20, progress=None):
             progress(n_, len(combos))
         st = with_changes(base, **dict(zip(grid.keys(), vals)))
         tr = run(st)
-        res[vals] = tr.assign(year=pd.to_datetime(tr.day).dt.year) if len(tr) else tr
+        keep = ["day", "exit_time", "side", "strategy", "points", "costs", "net", "r_multiple"]     # small copy: saves memory
+        res[vals] = tr[keep].assign(year=pd.to_datetime(tr.day).dt.year) if len(tr) else tr
+        del tr
+        gc.collect()
     years = sorted({y for t in res.values() if len(t) for y in t.year.unique()})
     rows, oos = [], []
     for Y in years[1:]:

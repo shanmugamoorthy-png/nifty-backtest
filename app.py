@@ -33,13 +33,13 @@ def _db_stamp():
         return "none"
 
 
-@st.cache_resource(max_entries=2, show_spinner="Loading saved data...")
+@st.cache_resource(max_entries=1, show_spinner="Loading saved data...")
 def data_from_db(stamp):
     m, rep = clean(load_minutes())
     return m, load_volume5(), rep
 
 
-@st.cache_resource(max_entries=2, show_spinner="Reading your CSV...")
+@st.cache_resource(max_entries=1, show_spinner="Reading your CSV...")
 def data_from_csv(digest, raw):
     import io
     d, rep = clean(parse_csv(io.BytesIO(raw)))
@@ -51,7 +51,7 @@ def data_from_csv(digest, raw):
     return (m if m is not None else d), vol, rep
 
 
-@st.cache_resource(max_entries=3, show_spinner="Finding patterns, structure, levels and zones (first time takes a minute)...")
+@st.cache_resource(max_entries=1, show_spinner="Finding patterns, structure, levels and zones (first time takes a minute)...")
 def context(src_key, tf, htf, pivot_k, sr_days, sr_tol, impulse, base_max, vol_mode, vol_lb, vol_strong, _minutes, _vol):
     s = Settings(timeframe=tf, htf=htf, pivot_k=pivot_k, sr_lookback_days=sr_days, sr_tol_pct=sr_tol, impulse_atr=impulse,
                  base_max_bars=base_max, vol_mode=vol_mode, vol_lookback=vol_lb, vol_strong=vol_strong)
@@ -63,7 +63,7 @@ def context(src_key, tf, htf, pivot_k, sr_days, sr_tol, impulse, base_max, vol_m
     return ctx, sig, piv
 
 
-@st.cache_resource(max_entries=2, show_spinner=False)
+@st.cache_resource(max_entries=1, show_spinner=False)
 def minute_arrays(src_key, _minutes):
     return _minute_arrays(_minutes)
 
@@ -141,6 +141,10 @@ with st.sidebar:
         gst = st.number_input("GST (%)", 0.0, 30.0, DEFAULTS.gst_pct, 1.0)
 
 # ----------------------------------------------------------------------------------------------------------- load data
+if src == "Dhan (saved)" and dl_state()["running"]:
+    st.info("⏳ The download is running. Backtests are paused until it finishes, so the 512 MB memory is left for the "
+            "download. Press **Refresh progress** in the sidebar to follow it; when it says *finished*, reload the page.")
+    st.stop()
 try:
     if src == "Dhan (saved)":
         minutes, vol, rep = data_from_db(_db_stamp())
@@ -292,7 +296,7 @@ with tabs[6]:
                 "combination that did best in the EARLIER years is picked and judged on that year. This is the honest number.")
     if st.button("▶️ Run walk-forward (36 backtests)"):
         bar = st.progress(0.0, text="running...")
-        run = lambda st_: run_backtest(ctx, score_signals(sig, ctx, st_), minutes, st_, dfrom, dto, M=M)
+        run = lambda st_: run_backtest(ctx, scored, minutes, st_, dfrom, dto, M=M)    # scores do not depend on the grid
         tab, oos, grid = walk_forward(run, S, progress=lambda i, n: bar.progress(i / n, text=f"backtest {i + 1} of {n}"))
         bar.empty()
         st.session_state["wf"] = (tab, oos, grid)

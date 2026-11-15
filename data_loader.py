@@ -172,23 +172,33 @@ def stored_summary():
 
 
 # ----------------------------------------------------------------------------------------------------------- loading
-def load_minutes():
+def _read_arrays(sql, ncol):
+    """Read a big table straight into numpy arrays in chunks (pandas.read_sql would need several times the memory)."""
     with LOCK:
         c = db()
-        d = pd.read_sql("SELECT ts, o, h, l, c FROM nifty1m ORDER BY ts", c)
+        n = c.execute(f"SELECT COUNT(*) FROM ({sql})").fetchone()[0]
+        out = np.empty((n, ncol), dtype=float)
+        cur = c.execute(sql)
+        k = 0
+        while True:
+            rows = cur.fetchmany(50_000)
+            if not rows:
+                break
+            out[k:k + len(rows)] = rows
+            k += len(rows)
         c.close()
-    d["dt"] = from_min(d.pop("ts"))
-    d["v"] = np.nan
-    return d[["dt", "o", "h", "l", "c", "v"]]
+    return out[:k]
+
+
+def load_minutes():
+    a = _read_arrays("SELECT ts, o, h, l, c FROM nifty1m ORDER BY ts", 5)
+    return pd.DataFrame({"dt": from_min(a[:, 0].astype("int64")), "o": a[:, 1], "h": a[:, 2], "l": a[:, 3], "c": a[:, 4],
+                         "v": np.full(len(a), np.nan)})
 
 
 def load_volume5():
-    with LOCK:
-        c = db()
-        d = pd.read_sql("SELECT ts, val FROM vol5 ORDER BY ts", c)
-        c.close()
-    d["dt"] = from_min(d.pop("ts"))
-    return d.rename(columns={"val": "v"})[["dt", "v"]]
+    a = _read_arrays("SELECT ts, val FROM vol5 ORDER BY ts", 2)
+    return pd.DataFrame({"dt": from_min(a[:, 0].astype("int64")), "v": a[:, 1]})
 
 
 def parse_csv(file):

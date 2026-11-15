@@ -8,15 +8,22 @@ from risk_management import order_costs, stop_level, target_level
 NS_MIN = 60_000_000_000
 
 
-def _best_signals(sc, s):
-    """Signals allowed by the settings, best score per candle."""
+def _best_signals(sc, s, n):
+    """For every candle, the row of the best allowed signal (highest score, then setup), or -1. Plain numpy: low memory."""
+    best = np.full(n, -1, dtype=np.int64)
     if sc.empty:
-        return {}
-    m = sc.strategy.isin(s.strategies) & (sc.score >= s.min_score)
+        return best
+    m = sc.strategy.isin(s.strategies).to_numpy() & (sc.score.to_numpy() >= s.min_score)
     if s.strict:
-        m &= sc.strict_ok
-    b = sc[m].sort_values(["score", "setup"], ascending=False).drop_duplicates("i")
-    return {int(r.i): r for r in b.itertuples(index=False)}
+        m &= sc.strict_ok.to_numpy(bool)
+    idx = np.where(m)[0]
+    if not len(idx):
+        return best
+    order = idx[np.lexsort((-sc.setup.to_numpy(float)[idx], -sc.score.to_numpy(float)[idx]))]
+    ii = sc.i.to_numpy(np.int64)[order]
+    _, first = np.unique(ii, return_index=True)
+    best[ii[first]] = order[first]
+    return best
 
 
 def _simulate(side, entry_ns, entry_px, sl, tp, s, M, bars, tf):
@@ -87,7 +94,10 @@ def run_backtest(ctx, scored, minutes, s, date_from=None, date_to=None, M=None):
     if M is None:
         M = _minute_arrays(minutes if minutes is not None and len(minutes) else ctx[["dt", "o", "h", "l", "c"]])
     bars = {"t": ctx.dt.to_numpy("datetime64[ns]").astype("int64"), "l": ctx.l.to_numpy(float), "h": ctx.h.to_numpy(float)}
-    best = _best_signals(scored, s)
+    best = _best_signals(scored, s, len(ctx))
+    if not scored.empty:
+        S_side, S_strat, S_score, S_cls = scored.side.to_numpy(), scored.strategy.to_numpy(), scored.score.to_numpy(), scored.cls.to_numpy()
+        S_note, S_rv, S_vc = scored.note.to_numpy(), scored.rv.to_numpy(float), scored.vol_class.to_numpy()
     qty = s.lot_size * s.lots
     dts, mins_, days, c_, o_ = ctx.dt, ctx.mins.to_numpy(), ctx.day.to_numpy(), ctx.c.to_numpy(float), ctx.o.to_numpy(float)
     bar_t = bars["t"]
@@ -106,12 +116,12 @@ def run_backtest(ctx, scored, minutes, s, date_from=None, date_to=None, M=None):
             continue
         if days[i] != cur_day:
             cur_day, count_day = days[i], 0
-        r = best.get(i)
+        r = best[i]
         close_min = mins_[i] + tf
-        if r is None or count_day >= s.max_trades_day or close_min < s.first_entry or close_min > s.last_entry:
+        if r < 0 or count_day >= s.max_trades_day or close_min < s.first_entry or close_min > s.last_entry:
             i += 1
             continue
-        side = int(r.side)
+        side = int(S_side[r])
         if s.entry_mode == "next_open":
             if i + 1 >= n or days[i + 1] != days[i]:
                 i += 1
@@ -129,9 +139,9 @@ def run_backtest(ctx, scored, minutes, s, date_from=None, date_to=None, M=None):
         cost = order_costs([(e_px, qty, side == 1)] + [(p, qty * f, side == -1) for p, f in fills], s)
         risk = abs(e_px - sl) if sl is not None else np.nan
         trades.append({
-            "day": pd.Timestamp(days[i]).date(), "strategy": r.strategy, "side": "BUY" if side == 1 else "SELL",
-            "score": int(r.score), "class": r.cls, "setup": r.note, "rv": float(r.rv) if np.isfinite(r.rv) else np.nan,
-            "vol_class": int(r.vol_class), "signal_time": pd.Timestamp(bar_t[i] + tf * NS_MIN), "entry_time": pd.Timestamp(e_ns),
+            "day": pd.Timestamp(days[i]).date(), "strategy": S_strat[r], "side": "BUY" if side == 1 else "SELL",
+            "score": int(S_score[r]), "class": S_cls[r], "setup": S_note[r], "rv": float(S_rv[r]) if np.isfinite(S_rv[r]) else np.nan,
+            "vol_class": int(S_vc[r]), "signal_time": pd.Timestamp(bar_t[i] + tf * NS_MIN), "entry_time": pd.Timestamp(e_ns),
             "entry": round(e_px, 2), "stop": round(sl, 2) if sl is not None else np.nan, "target": round(tp, 2) if tp is not None else np.nan,
             "exit_time": pd.Timestamp(x_ns), "exit": round(x_px, 2), "reason": reason, "points": round(pts, 2),
             "risk_pts": round(risk, 2), "r_multiple": round(pts / risk, 2) if risk and np.isfinite(risk) else np.nan,
